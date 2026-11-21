@@ -82,13 +82,14 @@ input{font:inherit;padding:7px;width:6em;text-align:center;text-transform:upperc
  </div>
 </div>
 <script>
-const NC=11,NR=13,NAMES={general:'Tướng',pawn:'Bộ binh',cav:'Kỵ binh',archer:'Cung thủ',shield:'Khiên'};
+const NC=11,NR=13,NAMES={general:'Tướng',pawn:'Bộ binh',cav:'Kỵ binh',archer:'Cung thủ',shield:'Khiên',spear:'Giáo'};
 const DESC={
 general:'Đi 1 ô 8 hướng (ăn được), hoặc 2 ô khi ô giữa trống (chỉ đi). Tầm chỉ huy 3 ô. Mỗi quân tối đa 2 lần/lượt.',
-pawn:'Đi/ăn 1 ô 8 hướng (cả chéo). Đào hào, xây cầu, phá cầu ở ô kề (4 hướng). Mỗi quân tối đa 2 lần/lượt.',
-cav:'Chạy thẳng 1–3 ô, ăn ở ô cuối. Mỗi quân tối đa 2 lần/lượt.',
-archer:'Đi/ăn 1 ô 4 hướng. Bắn đúng 2 ô (8 hướng), cả khi không thấy, qua núi, không bị phản đòn. Hạ mọi quân trừ Khiên. Mỗi quân tối đa 2 lần/lượt.',
-shield:'Đi/ăn 1 ô 8 hướng. Miễn nhiễm đạn cung. Mỗi quân tối đa 2 lần/lượt.'};
+pawn:'Đi/ăn 1 ô 8 hướng (cả chéo). Đào hào, xây cầu, phá cầu ở ô kề (cả chéo). Mỗi quân tối đa 2 lần/lượt.',
+cav:'Chạy thẳng 1–3 ô, ăn ở ô cuối. Nếu tấn công Giáo: cả hai cùng chết. Mỗi quân tối đa 2 lần/lượt.',
+archer:'Đi/ăn 1 ô 8 hướng. Bắn đúng 2 ô (8 hướng), cả khi không thấy, qua núi, không bị phản đòn. Hạ mọi quân trừ Khiên. Mỗi quân tối đa 2 lần/lượt.',
+shield:'Đi/ăn 1 ô 8 hướng. Miễn nhiễm đạn cung. Mỗi quân tối đa 2 lần/lượt.',
+spear:'Đi/ăn 1 ô 8 hướng. Nếu Kỵ binh tấn công Giáo: cả hai cùng chết. Mỗi quân tối đa 2 lần/lượt.'};
 const SIDE=['Xanh','Đỏ'],COL=['#1f6f6b','#9b2929'],TERR={dig:'plain',bridge:'water',break:'bridge'};
 const MODEN={move:'Đi / ăn',dig:'Đào hào',bridge:'Xây cầu',break:'Phá cầu'};
 const D4=[[1,0],[-1,0],[0,1],[0,-1]],D8=D4.concat([[1,1],[1,-1],[-1,1],[-1,-1]]);
@@ -102,10 +103,10 @@ function newState(){
  const board=Array(NC*NR).fill('plain');
  for(let c=0;c<NC;c++)board[ix(c,6)]='water';
  [1,5,9].forEach(c=>board[ix(c,6)]='bridge');
- // Các vị trí từng là rừng → núi; giữ nguyên núi cũ
- [[0,8],[10,8],[0,4],[10,4],[3,0],[3,12],[7,0],[7,12],[3,4],[3,8],[7,4],[7,8],[5,4],[5,8]].forEach(([c,r])=>board[ix(c,r)]='mountain');
- // Bỏ Sứ giả (envoy). Chỉ còn: Tướng, Kỵ, Cung, Khiên, Bộ binh
- const L=[['general',5,0],['cav',3,1],['cav',7,1],['archer',4,1],['archer',6,1],['shield',4,2],['shield',6,2],['pawn',2,2],['pawn',5,2],['pawn',8,2]];
+ // Núi: bỏ ADHK, thêm CI; giữ F giữa
+ [[2,0],[2,4],[2,8],[2,12],[8,0],[8,4],[8,8],[8,12],[5,4],[5,8]].forEach(([c,r])=>board[ix(c,r)]='mountain');
+ // Tướng, Kỵ B2/J2, Cung, Khiên, Giáo D3/H3, Bộ binh
+ const L=[['general',5,0],['cav',1,1],['cav',9,1],['archer',4,1],['archer',6,1],['shield',4,2],['shield',6,2],['spear',3,2],['spear',7,2],['pawn',2,2],['pawn',5,2],['pawn',8,2]];
  const pieces=[];let id=0;
  for(const side of [0,1])for(const [t,c,r] of L)pieces.push({id:id++,side,type:t,pos:side?ix(NC-1-c,NR-1-r):ix(c,r),alive:true,cargo:{}});
  return{board,pieces,turn:0,left:4,n:0,winner:null,mem:[{},{}],log:[],acted:{}};
@@ -126,9 +127,10 @@ function gen(s,p,known){
   break;
  case'pawn':one(D8);break;
  case'shield':one(D8);break;
- case'archer':one(D4);
+ case'archer':one(D8);
   for(const[dc,dr]of D8){const b=at(dc,dr,2);if(b<0||!pass(s,b))continue;if(o[b]&&o[b].side===p.side)continue;out.push({to:b,kind:'shoot',path:[]})}
   break;
+ case'spear':one(D8);break;
  case'cav':
   for(const[dc,dr]of D4){const path=[];for(let k=1;k<=3;k++){const a=at(dc,dr,k);if(a<0||!pass(s,a))break;const z=st(a);if(z===1)break;path.push(a);out.push({to:a,kind:z?'attack':'move',path:path.slice()});if(z)break}}
   break;
@@ -158,7 +160,7 @@ function apply(s,a){
  const before=[live(s,0).cells,live(s,1).cells],o=occ(s);
  let txt='',cells=[p.pos,a.to],walked=[p.pos],risky=false;
  if(a.k==='terrain'){
-  const dd=Math.abs(col(p.pos)-col(a.to))+Math.abs(row(p.pos)-row(a.to));
+  const dd=Math.max(Math.abs(col(p.pos)-col(a.to)),Math.abs(row(p.pos)-row(a.to)));
   if(p.type!=='pawn'||dd!==1||!TERR[a.op]||s.board[a.to]!==TERR[a.op])return false;
   const nm=MODEN[a.op].toLowerCase();
   if(o[a.to]){risky=true;txt=`Bộ binh ${lab(p.pos)} muốn ${nm} ở ${lab(a.to)} nhưng có quân đứng đó.`}
@@ -177,7 +179,10 @@ function apply(s,a){
     const c=m.path[i],q=o[c];
     if(!q){cur=c;walked.push(c);continue}
     if(q.side===p.side||p.type==='envoy'||(p.type==='general'&&i>0))break;
-    cells.push(c);q.alive=false;cur=c;walked.push(c);fought=`${NAMES[p.type]} ${lab(from)} ăn ${NAMES[q.type]} tại ${lab(c)}.`;risky=true;
+    cells.push(c);q.alive=false;cur=c;walked.push(c);
+    if(p.type==='cav'&&q.type==='spear'){p.alive=false;fought=`Kỵ binh ${lab(from)} đâm Giáo ${lab(c)}: cả hai cùng chết.`;}
+    else fought=`${NAMES[p.type]} ${lab(from)} ăn ${NAMES[q.type]} tại ${lab(c)}.`;
+    risky=true;
     break;
    }
    if(p.alive)p.pos=cur;
@@ -200,7 +205,8 @@ const G={hist:[],undoUsed:false,peer:null,s:null,me:0,solo:false,conn:null,sel:n
 const ICON={general:'<path d="M4 18l-1-10 5 4 4-7 4 7 5-4-1 10z"/>',shield:'<path d="M12 3l8 3v6c0 5-4 8-8 10-4-2-8-5-8-10V6z"/>',
 pawn:'<path d="M12 1.5l2.4 3.3v9.2H9.6V4.8z"/><rect x="5.5" y="14" width="13" height="2.6" rx="1.2"/><rect x="10.7" y="16.6" width="2.6" height="4"/><circle cx="12" cy="21.8" r="1.7"/>',
 cav:'<path d="M6 21v-3c0-3 2-5 4-7l-2-.5L5 13l-2-2 6-6 1-3 2.5 2c4.5.5 7.5 5 7.5 10v7z"/><circle cx="12.8" cy="8.2" r="1.1" fill="#1b1b1b"/>',
-archer:'<g fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/></g><circle cx="12" cy="12" r="1.6"/>'};
+archer:'<g fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/></g><circle cx="12" cy="12" r="1.6"/>',
+spear:'<path d="M11.2 2.2h1.6v12.5h-1.6z"/><path d="M12 2L7.5 7.2h3V14h2.8V7.2h3z"/><circle cx="12" cy="20.2" r="2.4"/>'};
 
 // flip=true khi đến lượt Đỏ → chỉ xoay icon quân 180°
 const tok=(p,x='',flip=false)=>`<div class="pc ${x}${flip?' flip':''}"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11.5" fill="${COL[p.side]}" stroke="#fff4d6"/><g transform="translate(12 12) scale(.7) translate(-12 -12)" fill="#fff">${ICON[p.type]}</g></svg></div>`;
@@ -220,7 +226,7 @@ function render(){
   // Không highlight nếu quân đã dùng hết 2 lần trong lượt
   if((s.acted[sp.id]||0)<2){
    if(G.mode==='move')gen(s,sp,j=>solo||G.vis.has(j)).forEach(m=>{hl[m.to]=m.kind==='shoot'?'hr':(sp.type==='envoy'||(sp.type==='general'&&m.path.length>1))?'hg':m.kind==='attack'?'hy en':'hy'});
-   else D4.forEach(([dc,dr])=>{const c=col(sp.pos)+dc,r=row(sp.pos)+dr;if(!inb(c,r))return;const j=ix(c,r);
+   else D8.forEach(([dc,dr])=>{const c=col(sp.pos)+dc,r=row(sp.pos)+dr;if(!inb(c,r))return;const j=ix(c,r);
     if(TERR[G.mode]===s.board[j]&&!(o[j]&&(o[j].side===side||solo||G.vis.has(j))))hl[j]='hb'});
   }
  }
@@ -257,6 +263,13 @@ function render(){
  }
  $('sel').innerHTML=si;
  $('log').innerHTML=s.log.slice(0,14).map(e=>`<p class="s${e.side}">${e.seen[vs]||solo?e.txt:SIDE[e.side]+' đã hành động ngoài tầm nhìn.'}</p>`).join('');
+ // Xoay bảng điều khiển về phía người đang đánh (ngồi đối diện)
+ const sideEl=$('side');
+ if(sideEl){
+  const faceRed=solo?(s.winner!==null&&s.winner!=='draw'?s.winner===1:s.turn===1):(G.me===1);
+  sideEl.style.transform=faceRed?'rotate(180deg)':'';
+  sideEl.style.transformOrigin='center center';
+ }
 }
 function click(i){
  const s=G.s;if(s.winner!==null)return;
@@ -268,7 +281,7 @@ function click(i){
  if((s.acted[sp.id]||0)>=2)return; // đã dùng hết 2 lần
  if(G.mode==='move'){const m=gen(s,sp,j=>solo||G.vis.has(j)).find(m=>m.to===i);if(m)a={k:m.kind==='shoot'?'shoot':'move',id:sp.id,to:i}}
  else{
-  const dd=Math.abs(col(sp.pos)-col(i))+Math.abs(row(sp.pos)-row(i));
+  const dd=Math.max(Math.abs(col(sp.pos)-col(i)),Math.abs(row(sp.pos)-row(i)));
   if(dd===1&&TERR[G.mode]===s.board[i]&&!(p&&(solo||G.vis.has(i))))a={k:'terrain',id:sp.id,to:i,op:G.mode};
  }
  if(a)act(a,false);
